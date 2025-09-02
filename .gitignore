@@ -1,0 +1,22 @@
+# Backend build artifacts
+backend/target/
+target/
+# backend/Cargo.lock
+
+# Frontend
+frontend/react/node_modules/
+frontend/react/build/
+frontend/vanilla/dist/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
