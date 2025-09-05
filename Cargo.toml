@@ -7,7 +7,15 @@ members = [
 ]
 
 [workspace.dependencies]
+shared = { path = "./backend/shared" }
 async-graphql = "7.0.17"
 async-graphql-actix-web = "7.0.17"
 actix-web = "4.11.0"
 tokio = {version = "1.47.1", features = ["full"]}
+uuid = { version = "1.18.0", features = ["v4", "serde"] }
+time = { version = "0.3.41", features = ["serde"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "time"] }
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenv = "0.15.0"
+anyhow = "1.0.99"

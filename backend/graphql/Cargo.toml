@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+shared = { workspace = true }
 async-graphql = { workspace = true }
 async-graphql-actix-web = { workspace = true }
 actix-web = { workspace = true }
 tokio = { workspace = true }
+dotenv = { workspace = true }
+sqlx = { workspace = true }
+anyhow = { workspace = true }
