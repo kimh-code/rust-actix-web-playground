@@ -1,6 +1,6 @@
 use async_graphql::*;
 use crate::{
-    models::user::User,
+    models::user::GraphQLUser,
     database::repositories::user_repository::UserRepository,
 };
 
@@ -13,7 +13,7 @@ impl Mutation {
         &self,
         ctx: &Context<'_>,
         input: CreateUserInput,
-    ) -> Result<User> {
+    ) -> Result<GraphQLUser> {
         let user_repo = ctx.data::<UserRepository>()?;
 
         let password_hash = format!("hashed_{}", input.password);

@@ -2100,6 +2100,7 @@ dependencies = [
  "chrono",
  "serde",
  "sqlx",
+ "thiserror 2.0.16",
  "time",
  "tokio",
  "uuid",

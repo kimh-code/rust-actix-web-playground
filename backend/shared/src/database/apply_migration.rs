@@ -7,6 +7,10 @@ use sqlx::{Row,
 use chrono::{DateTime, Utc};
 use async_graphql::SimpleObject;
 
+use crate::{
+    error::Error as AppError,
+};
+
 #[derive(Clone)]
 pub struct MigrationManager {
     migrations_dir: String, // \migrations
@@ -17,7 +21,7 @@ impl MigrationManager {
         Ok(Self { migrations_dir })
     }
 
-    pub async fn ensure_migration_table(pool: &PgPool) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn ensure_migration_table(pool: &PgPool) -> Result<(), AppError> {
         println!("마이그레이션 추적 테이블 확인 중...");
 
         sqlx::query(
@@ -34,7 +38,7 @@ impl MigrationManager {
         Ok(())
     }
 
-    pub async fn get_applied_migrations(pool: &PgPool) -> Result<Vec<i64>, Box<dyn Error + Send + Sync>> {
+    pub async fn get_applied_migrations(pool: &PgPool) -> Result<Vec<i64>, AppError> {
         let versions: Vec<i64> = sqlx::query_scalar(
             "SELECT version FROM schema_migrations ORDER BY version"
         )
@@ -45,7 +49,7 @@ impl MigrationManager {
         Ok(versions)
     }
 
-    pub async fn run_migration(pool: &PgPool , version: i64, sql: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn run_migration(pool: &PgPool , version: i64, sql: &str) -> Result<(), AppError> {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)"
         )
@@ -79,7 +83,7 @@ impl MigrationManager {
         Ok(())
     }
 
-pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
+pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> {
     println!("마이그레이션 디렉토리: {}", self.migrations_dir);
     println!("디렉토리 존재 여부: {}", std::path::Path::new(&self.migrations_dir).exists());
     
@@ -114,7 +118,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
         }
         Err(e) => {
             println!("디렉토리 읽기 실패: {}", e);
-            return Err(Box::new(e));
+            return Err(e.into());
         }
     }
     
@@ -125,7 +129,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
     Ok(up_files)
 }
 
-    pub async fn extract_down_migration_files(&self) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
+    pub async fn extract_down_migration_files(&self) -> Result<Vec<String>, AppError> {
         let mut down_files = Vec::new();
 
         let mut entries = tokio::fs::read_dir(&self.migrations_dir).await?;
@@ -175,7 +179,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
         }
     }
 
-    pub async fn find_pending_up_migrations(&self, pool: &PgPool) -> Result<Vec<(i64, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn find_pending_up_migrations(&self, pool: &PgPool) -> Result<Vec<(i64, String)>, AppError> {
         let up_files = Self::extract_up_migration_files(&self).await?;
 
         let applied_versions: Vec<i64> = Self::get_applied_migrations(pool).await?;
@@ -212,7 +216,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
         Ok(pending)
     }
 
-    pub async fn run_pending_up_migrations(&self, pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn run_pending_up_migrations(&self, pool: &PgPool) -> Result<(), AppError> {
         let pending = Self::find_pending_up_migrations(&self, pool).await?;
 
         if pending.is_empty() {
@@ -246,7 +250,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
         Ok(())
     }
 
-    pub async fn rollback_to(&self, target_version: i64, pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn rollback_to(&self, target_version: i64, pool: &PgPool) -> Result<(), AppError> {
         println!("목표: {}로 롤백", target_version);
 
         let versions_to_rollback: Vec<i64> = sqlx::query_scalar(
@@ -294,14 +298,14 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, Box<dyn Er
                 println!("버전 {} 롤백 완료 ({})", version, down_filename);
             } else {
                 println!("버전 {}의 down.sql 파일을 찾을 수 없습니다!", version);
-                return Err("down 파일 없음".into());
+                return Err(AppError::NotFound("down 파일 없음:".to_string()));
             }
         }
 
         println!("롤백 완료!");
         Ok(())
     }
-    pub async fn migration_status(&self, pool: &PgPool) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn migration_status(&self, pool: &PgPool) -> Result<(), AppError> {
         let rows = sqlx::query(
             r#"SELECT "version", applied_at FROM schema_migrations ORDER BY "version""#
         )

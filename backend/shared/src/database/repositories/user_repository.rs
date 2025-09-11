@@ -1,5 +1,5 @@
 use crate::{
-    models::user::User,
+    models::user::GraphQLUser,
     database::models::db_user::DbUser,
 };
 use sqlx::PgPool;

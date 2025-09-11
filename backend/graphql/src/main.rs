@@ -7,9 +7,10 @@ use shared::{
         repositories::user_repository::UserRepository,
     },
     models::{
-        user::User,
+        user::GraphQLUser,
         mutation::Mutation,
     },
+    error::Error as AppError,
 };
 use sqlx::{Row,
             types::chrono,
@@ -17,7 +18,6 @@ use sqlx::{Row,
 };
 use std::env;
 use dotenv::dotenv;
-
 
 struct QueryRoot;
 
@@ -27,7 +27,7 @@ impl QueryRoot {
         "Hello, GraphQL!"
     }
 
-    async fn user(&self, ctx: &Context<'_>, id: ID) -> Result<Option<User>> {
+    async fn user(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLUser>> {
         let user_repo = ctx.data::<UserRepository>()?;
 
         if let Some(db_user) = user_repo.find_by_id(&id).await? {
@@ -37,27 +37,27 @@ impl QueryRoot {
         }
     }
 
-    async fn users(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<User>> {
+    async fn users(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLUser>> {
         let user_repo = ctx.data::<UserRepository>()?;
 
         let db_users = user_repo.find_by_ids(&ids).await?;
-        let users: Vec<User> = db_users.into_iter().map(|db_user|db_user.into()).collect();
+        let users: Vec<GraphQLUser> = db_users.into_iter().map(|db_user|db_user.into()).collect();
 
         Ok(users)
     }
 
-    async fn find_all(&self, ctx: &Context<'_>) -> Result<Vec<User>> {
+    async fn find_all(&self, ctx: &Context<'_>) -> Result<Vec<GraphQLUser>> {
         let user_repo = ctx.data::<UserRepository>()?;
 
         let db_users = user_repo.find_all().await?;
-        let users: Vec<User> = db_users.into_iter().map(|db_user|db_user.into()).collect();
+        let users: Vec<GraphQLUser> = db_users.into_iter().map(|db_user|db_user.into()).collect();
 
         Ok(users)
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), AppError> {
     println!("서버 시작 중...");
 
     dotenv().ok();
@@ -82,11 +82,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let user_repo = UserRepository::new(pool.clone());
 
+
     let schema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
         .data(pool.clone())
         .data(user_repo)
         .finish();
-    
+
     HttpServer::new(move || {
         App::new()
             .route("/", web::get().to(|| async {
