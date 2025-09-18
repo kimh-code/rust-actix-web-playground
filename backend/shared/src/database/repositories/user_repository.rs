@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use async_graphql::ID;
 
+#[derive(Clone)]
 pub struct UserRepository{
     pool: PgPool,
 }
@@ -68,5 +69,28 @@ impl UserRepository {
         sqlx::query_as::<_, DbUser>("SELECT * FROM users")
             .fetch_all(&self.pool)
             .await
+    }
+
+    pub async fn find_user_with_roles(&self, user_id: &Uuid) -> Result<Option<(DbUser, Vec<String>)>, sqlx::Error> {
+        let user = self.find_by_id(&ID::from(user_id.to_string())).await?;
+
+        if let Some(user) = user {
+            let role_names = sqlx::query!(
+                "SELECT r.name
+                 FROM user_roles ur
+                 JOIN roles r ON ur.role_id = r.id
+                 WHERE ur.user_id = $1",
+                 user_id
+            )
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<String>>();
+
+            Ok(Some((user, role_names)))
+        } else {
+            Ok(None)
+        }
     }
 }

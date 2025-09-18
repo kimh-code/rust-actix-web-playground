@@ -25,22 +25,26 @@ impl MigrationManager {
         println!("마이그레이션 추적 테이블 확인 중...");
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (
-                version BIGINT PRIMARY KEY,
-                applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            "CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                version VARCHAR NOT NULL PRIMARY KEY,
+                description TEXT NOT NULL,
+                installed_on TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                success BOOLEAN NOT NULL,
+                checksum BYTEA NOT NULL,
+                execution_time BIGINT NOT NULL
             );"
         )
         .execute(pool)
         .await?;
 
-        println!("schema_migrations 테이블 준비 완료");
+        println!("_sqlx_migrations 테이블 준비 완료");
 
         Ok(())
     }
 
     pub async fn get_applied_migrations(pool: &PgPool) -> Result<Vec<i64>, AppError> {
         let versions: Vec<i64> = sqlx::query_scalar(
-            "SELECT version FROM schema_migrations ORDER BY version"
+            "SELECT version FROM _sqlx_migrations ORDER BY version"
         )
         .fetch_all(pool)
         .await?;
@@ -49,9 +53,9 @@ impl MigrationManager {
         Ok(versions)
     }
 
-    pub async fn run_migration(pool: &PgPool , version: i64, sql: &str) -> Result<(), AppError> {
+    pub async fn run_migration(pool: &PgPool , version: i64, description:&str, sql: &str) -> Result<(), AppError> {
         let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)"
+            "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = $1)"
         )
         .bind(version)
         .fetch_one(pool)
@@ -71,9 +75,15 @@ impl MigrationManager {
             .await?;
         
         sqlx::query(
-            "INSERT INTO schema_migrations (version) VALUES ($1)"
+            "INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+             VALUES ($1, $2, $3, $4, $5, $6)"
         )
         .bind(version)
+        .bind(description)
+        .bind(chrono::Utc::now())
+        .bind(true)
+        .bind(format!("custom_{}", version).as_bytes())
+        .bind(0i64)
         .execute(&mut *tx)
         .await?;
 
@@ -150,13 +160,24 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
         Ok(down_files)
     }
 
-    fn extract_version_from_up_file(filename: &str) -> Option<i64> {
-        let version_part = filename
-            .trim_end_matches(".up.sql")
-            .split('_')
-            .next()?;
+    fn extract_version_and_description_from_up_file(filename: &str) -> Option<(i64, String)> {
+        let without_extension = filename.strip_suffix(".up.sql")?;
 
-        version_part.parse().ok()
+        let mut parts = without_extension.splitn(2, '_');
+
+        let version_str = parts.next()?;
+        let version = version_str.parse::<i64>().ok()?;
+
+        let description = if let Some(desc_part) = parts.next() {
+            desc_part
+                .replace('_', " ")
+                .trim()
+                .to_lowercase()
+        } else {
+            "migration".to_string()
+        };
+
+        Some((version, description))
     }
 
     fn extract_version_from_down_file(filename: &str) -> Option<i64> {
@@ -186,9 +207,9 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
 
         println!("발견된 .up.sql 파일들:");
         for up_file in &up_files {
-            if let Some(version) = Self::extract_version_from_up_file(up_file) {
+            if let Some((version, description)) = Self::extract_version_and_description_from_up_file(up_file) {
                 let down_file = self.find_down_file_for_up(up_file);
-                println!("{} -> 버전: {}, down: {:?}", up_file, version, down_file);
+                println!("{} -> 버전: {}, 설명: {}, down: {:?}", up_file, version, description, down_file);
                 }
             }
         
@@ -201,16 +222,16 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
 
         println!("파일 시스템의 마이그레이션:");
         for up_file in up_files {
-            if let Some(version) = Self::extract_version_from_up_file(&up_file) {
+            if let Some((version, description)) = Self::extract_version_and_description_from_up_file(&up_file) {
                 if !applied_versions.contains(&version) {
-                    pending.push((version, up_file));
+                    pending.push((version, description));
                 }
             }
         }
 
         println!("\n 실행 대기 중인 .up.sql 마이그레이션:");
-        for (version, file) in &pending {
-            println!("{} ({})", version, file);
+        for (version, description) in &pending {
+            println!("{} ({})", version, description);
         }
 
         Ok(pending)
@@ -224,10 +245,10 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
             return Ok(());
         }
 
-        for (version, up_filename) in pending {
-            println!("UP 마이그레이션 실행 중: {} ({})", version, up_filename);
+        for (version, description) in pending {
+            println!("UP 마이그레이션 실행 중: {} ({})", version, description);
 
-            let up_file_path = format!("{}/{}", self.migrations_dir, up_filename);
+            let up_file_path = format!("{}/{}", self.migrations_dir, description);
             let sql_content = fs::read_to_string(up_file_path).await?;
 
             let mut tx = pool.begin().await?;
@@ -236,8 +257,15 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
                 .execute(&mut *tx)
                 .await?;
 
-            sqlx::query("INSERT INTO schema_migrations (version) VALUES ($1)")
+            sqlx::query("INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+                        VALUES ($1, $2, $3, $4, $5, $6)"
+                )
                 .bind(version)
+                .bind(description)
+                .bind(chrono::Utc::now())
+                .bind(true)
+                .bind(format!("custom_{}", version).as_bytes())
+                .bind(0i64)
                 .execute(&mut *tx)
                 .await?;
 
@@ -254,7 +282,7 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
         println!("목표: {}로 롤백", target_version);
 
         let versions_to_rollback: Vec<i64> = sqlx::query_scalar(
-            "SELECT version FROM schema_migrations
+            "SELECT version, description FROM _sqlx_migrations
             WHERE version > $1 ORDER BY version DESC"
         )
         .bind(target_version)
@@ -288,7 +316,63 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
                     .execute(&mut *tx)
                     .await?;
 
-                sqlx::query("DELETE FROM schema_migrations WHERE version = $1")
+                sqlx::query("DELETE FROM _sqlx_migrations WHERE version > $1")
+                    .bind(version)
+                    .execute(&mut *tx)
+                    .await?;
+
+                tx.commit().await?;
+
+                println!("Rolled back to 버전 {} ({})", version, down_filename);
+            } else {
+                println!("버전 {}의 down.sql 파일을 찾을 수 없습니다!", version);
+                return Err(AppError::NotFound("down 파일 없음:".to_string()));
+            }
+        }
+
+        println!("롤백 완료!");
+        Ok(())
+    }
+
+    pub async fn rollback_single(&self, target_version: i64, pool: &PgPool) -> Result<(), AppError> {
+        println!("목표: {}로 롤백", target_version);
+
+        let versions_to_rollback: Vec<i64> = sqlx::query_scalar(
+            "SELECT version, description FROM _sqlx_migrations
+            WHERE version = $1 ORDER BY version DESC"
+        )
+        .bind(target_version)
+        .fetch_all(pool)
+        .await?;
+
+        if versions_to_rollback.is_empty() {
+            println!("롤백할 마이그레이션이 없습니다.");
+            return Ok(());
+        }
+
+        println!("롤백할 버전들: {:?}", versions_to_rollback);
+
+        let down_files = self.extract_down_migration_files().await?;
+
+        for version in versions_to_rollback {
+            println!("버전 {} 롤백 중...", version);
+
+            let down_filename = down_files.iter()
+                .find(|filename|{
+                    Self::extract_version_from_down_file(filename) == Some(version)
+                });
+
+            if let Some(down_filename) = down_filename {
+                let down_file_path = format!("{}/{}", self.migrations_dir, down_filename);
+                let sql_content = fs::read_to_string(down_file_path).await?;
+
+                let mut tx = pool.begin().await?;
+
+                sqlx::query(&sql_content)
+                    .execute(&mut *tx)
+                    .await?;
+
+                sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
                     .bind(version)
                     .execute(&mut *tx)
                     .await?;
@@ -303,26 +387,6 @@ pub async fn extract_up_migration_files(&self) -> Result<Vec<String>, AppError> 
         }
 
         println!("롤백 완료!");
-        Ok(())
-    }
-    pub async fn migration_status(&self, pool: &PgPool) -> Result<(), AppError> {
-        let rows = sqlx::query(
-            r#"SELECT "version", applied_at FROM schema_migrations ORDER BY "version""#
-        )
-        .fetch_all(pool)
-        .await?;
-
-        println!("마이그레이션 상태:");
-        println!("┌────────────────┬─────────────────────────────┐");
-        println!("│ Version        │ Applied At                  │");
-        println!("├────────────────┼─────────────────────────────┤");
-        for row in rows {
-            let version: i64 = row.get("version");
-            let applied_at: chrono::DateTime<Utc> = row.get("applied_at");
-            println!("| {:14} | {:27} |", version, applied_at.format("%Y-%m-%d %H:%M:%S UTC"));
-        }
-
-        println!("└────────────────┴─────────────────────────────┘");
         Ok(())
     }
 }
