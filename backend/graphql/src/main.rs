@@ -1,6 +1,8 @@
 use async_graphql::*;
 use async_graphql_actix_web::{GraphQL, GraphQLSubscription};
-use actix_web::{web, App, HttpServer, HttpResponse, Result as ActixResult};
+use actix_web::{web, App, HttpServer, HttpResponse, Result as ActixResult,
+                middleware::from_fn,
+};
 use shared::{
     database::{
         apply_migration::MigrationManager,
@@ -11,6 +13,7 @@ use shared::{
         mutation::Mutation,
     },
     error::Error as AppError,
+    auth::middleware::auth_middleware,
 };
 use sqlx::{Row,
             types::chrono,
@@ -76,20 +79,20 @@ async fn main() -> Result<(), AppError> {
 
     MigrationManager::ensure_migration_table(&pool).await?;
     migration_manager.run_pending_up_migrations(&pool).await?;
-    migration_manager.migration_status(&pool).await?;
 
     println!("마이그레이션 완료!");
 
     let user_repo = UserRepository::new(pool.clone());
 
-
     let schema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
         .data(pool.clone())
-        .data(user_repo)
+        .data(user_repo.clone())
         .finish();
 
     HttpServer::new(move || {
         App::new()
+            .app_data(web::Data::new(user_repo.clone()))
+            .wrap(from_fn(auth_middleware))
             .route("/", web::get().to(|| async {
                 HttpResponse::Found()
                     .append_header(("Location", "/playground"))

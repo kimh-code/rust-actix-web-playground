@@ -22,4 +22,7 @@ pub enum Error {
 
     #[error("Server error: {0}")]
     Server(String),
+
+    #[error("Invalid Input error: {0}")]
+    InvalidInput(String),
 }

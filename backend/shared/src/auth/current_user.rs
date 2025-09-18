@@ -2,8 +2,12 @@ use uuid::Uuid;
 use crate::{
     auth::{Role, Permission},
     error::Error,
+    database::{
+        repositories::user_repository::UserRepository,
+    }
 };
 use std::collections::HashSet;
+use async_graphql::ID;
 
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
@@ -63,5 +67,35 @@ impl CurrentUser {
 
     pub fn is_admin(&self) -> bool {
         self.has_role(&Role::Admin)
+    }
+
+    pub async fn from_user_id(
+        user_id: &str,
+        user_repo: &UserRepository,
+    ) -> Result<Self, Error> {
+        let user_uuid = Uuid::parse_str(user_id)
+            .map_err(|_| Error::InvalidInput("Invalid user ID format".to_string()))?;
+
+        let (db_user, role_names) = user_repo.find_user_with_roles(&user_uuid).await
+            .map_err(|e| Error::Database(e))?    
+            .ok_or(Error::NotFound("User not found".to_string()))?;
+
+        let roles = role_names.into_iter()
+            .filter_map(|role_str| match role_str.as_str() {
+                "Admain" => Some(Role::Admin),
+                "User" => Some(Role::User),
+                "Guest" => Some(Role::Guest),
+                _ => None,
+            })
+            .collect::<Vec<Role>>();
+
+        let permissions = Self::calculate_permissions(&roles);
+
+        Ok(CurrentUser {
+            id: db_user.id,
+            email: db_user.email,
+            roles,
+            permissions,
+        })
     }
 }
