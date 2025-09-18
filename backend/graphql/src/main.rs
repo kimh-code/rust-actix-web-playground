@@ -1,7 +1,7 @@
 use async_graphql::*;
-use async_graphql_actix_web::{GraphQL, GraphQLSubscription};
+use async_graphql_actix_web::{GraphQL, GraphQLSubscription, GraphQLRequest, GraphQLResponse};
 use actix_web::{web, App, HttpServer, HttpResponse, Result as ActixResult,
-                middleware::from_fn,
+                middleware::from_fn, HttpRequest, HttpMessage,
 };
 use shared::{
     database::{
@@ -13,7 +13,7 @@ use shared::{
         mutation::Mutation,
     },
     error::Error as AppError,
-    auth::middleware::auth_middleware,
+    auth::{middleware::auth_middleware, CurrentUser},
 };
 use sqlx::{Row,
             types::chrono,
@@ -21,6 +21,25 @@ use sqlx::{Row,
 };
 use std::env;
 use dotenv::dotenv;
+
+pub type MySchema = Schema<QueryRoot, Mutation, EmptySubscription>;
+
+pub async fn graphql_handler(
+    schema: web::Data<MySchema>,
+    req: HttpRequest,
+    payload: GraphQLRequest,
+) -> GraphQLResponse {
+    
+    let mut graphql_request = payload.into_inner();
+
+    if let Some(current_user) = req.extensions().get::<CurrentUser>() {
+        graphql_request = graphql_request.data(current_user.clone());
+    }
+
+    let response = schema.execute(graphql_request).await;
+    
+    response.into()
+}
 
 struct QueryRoot;
 
@@ -84,7 +103,7 @@ async fn main() -> Result<(), AppError> {
 
     let user_repo = UserRepository::new(pool.clone());
 
-    let schema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
+    let schema: MySchema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
         .data(pool.clone())
         .data(user_repo.clone())
         .finish();
@@ -92,13 +111,14 @@ async fn main() -> Result<(), AppError> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(user_repo.clone()))
+            .app_data(web::Data::new(schema.clone()))
             .wrap(from_fn(auth_middleware))
             .route("/", web::get().to(|| async {
                 HttpResponse::Found()
                     .append_header(("Location", "/playground"))
                     .finish()
             }))
-            .route("/graphql", web::post().to(GraphQL::new(schema.clone())))
+            .route("/graphql", web::post().to(graphql_handler))
             .route("/playground", web::get().to(index_graphiql))
     })
     .bind("127.0.0.1:8000")?
