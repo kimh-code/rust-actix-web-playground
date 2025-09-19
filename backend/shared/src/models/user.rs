@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use time::{OffsetDateTime, 
 };
 use sqlx::FromRow;
@@ -6,6 +7,27 @@ use crate::{
     database::models::db_user::DbUser,
 };
 use async_graphql::{Scalar, ScalarType, InputValueError, InputValueResult, Value, ID, SimpleObject, ComplexObject};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserProfile {
+    pub id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+impl From<DbUser> for UserProfile {
+    fn from(db_user: DbUser) -> Self {
+        UserProfile {
+            id: db_user.id,
+            username: db_user.username,
+            email: db_user.email,
+            created_at: db_user.created_at,
+            updated_at: db_user.updated_at,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeOffsetDateTime(pub OffsetDateTime);
@@ -36,21 +58,18 @@ pub struct GraphQLUser {
     pub id: ID,
     pub username: String,
     pub email: String,
-    // password_hash 제외,
-    // is_deleted 제외,
-    // internal_notes 제외,
     pub created_at: TimeOffsetDateTime,
     pub updated_at: TimeOffsetDateTime,
 }
 
-impl From<DbUser> for GraphQLUser {
-    fn from(db_user: DbUser) -> Self {
+impl From<UserProfile> for GraphQLUser {
+    fn from(profile: UserProfile) -> Self {
         GraphQLUser {
-            id: ID(db_user.id.to_string()),
-            username: db_user.username,
-            email: db_user.email,
-            created_at: TimeOffsetDateTime(db_user.created_at),
-            updated_at: TimeOffsetDateTime(db_user.updated_at),
+            id: ID(profile.id.to_string()),
+            username: profile.username,
+            email: profile.email,
+            created_at: TimeOffsetDateTime(profile.created_at),
+            updated_at: TimeOffsetDateTime(profile.updated_at),
         }
     }
 }
@@ -71,11 +90,11 @@ pub struct RestUser {
     pub username: String,
 }
 
-impl From<DbUser> for RestUser {
-    fn from(db_user: DbUser) -> Self {
+impl From<UserProfile> for RestUser {
+    fn from(profile: UserProfile) -> Self {
         RestUser {
-            id: db_user.id.to_string(),
-            username: db_user.username,
+            id: profile.id.to_string(),
+            username: profile.username,
         }
     }
 }

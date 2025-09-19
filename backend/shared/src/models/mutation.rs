@@ -2,6 +2,7 @@ use async_graphql::*;
 use crate::{
     models::user::GraphQLUser,
     database::repositories::user_repository::UserRepository,
+    database::services::user_service::UserService,
 };
 
 #[derive(Default)]
@@ -14,12 +15,12 @@ impl Mutation {
         ctx: &Context<'_>,
         input: CreateUserInput,
     ) -> Result<GraphQLUser> {
-        let user_repo = ctx.data::<UserRepository>()?;
+        let user_service = ctx.data::<UserService>()?;
 
         let password_hash = format!("hashed_{}", input.password);
-        let db_user = user_repo.create(&input.username, &input.email, &password_hash).await?;
+        let user_profile = user_service.create(&input.username, &input.email, &password_hash).await?;
 
-        Ok(db_user.into())
+        Ok(user_profile.into())
     }
 }
 

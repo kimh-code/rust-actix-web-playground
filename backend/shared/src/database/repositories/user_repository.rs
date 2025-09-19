@@ -17,9 +17,9 @@ impl UserRepository {
         Self { pool }
     }
 
-    pub async fn find_by_id(&self, id: &ID) -> Result<Option<DbUser>, sqlx::Error> {
+    pub async fn find_by_id(&self, id: &str) -> Result<Option<DbUser>, sqlx::Error> {
 
-        let uuid_id = Uuid::parse_str(&id.0)
+        let uuid_id = Uuid::parse_str(id)
             .map_err(|_| sqlx::Error::RowNotFound)?;
 
         sqlx::query_as::<_, DbUser>(
@@ -30,9 +30,9 @@ impl UserRepository {
         .await
     }
 
-    pub async fn find_by_ids(&self, ids: &[ID]) -> Result<Vec<DbUser>, sqlx::Error> {
+    pub async fn find_by_ids(&self, ids: &[&str]) -> Result<Vec<DbUser>, sqlx::Error> {
         let numeric_ids: Vec<Uuid> = ids.iter()
-            .filter_map(|id| id.0.parse().ok())
+            .filter_map(|id| id.parse().ok())
             .collect();
 
         if numeric_ids.is_empty() {
@@ -71,22 +71,31 @@ impl UserRepository {
             .await
     }
 
-    pub async fn find_user_with_roles(&self, user_id: &Uuid) -> Result<Option<(DbUser, Vec<String>)>, sqlx::Error> {
-        let user = self.find_by_id(&ID::from(user_id.to_string())).await?;
+    pub async fn find_roles_by_id(&self, user_id: &str) -> Result<Vec<String>, sqlx::Error> {
+        let uuid = Uuid::parse_str(user_id)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
-        if let Some(user) = user {
-            let role_names = sqlx::query!(
-                "SELECT r.name
-                 FROM user_roles ur
-                 JOIN roles r ON ur.role_id = r.id
-                 WHERE ur.user_id = $1",
-                 user_id
+        let role_names = sqlx::query!(
+            "SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.role_id = r.id
+             WHERE ur.user_id = $1",
+             uuid
             )
             .fetch_all(&self.pool)
             .await?
             .into_iter()
             .map(|row| row.name)
             .collect::<Vec<String>>();
+
+        Ok(role_names)
+    }
+
+    pub async fn find_user_with_roles(&self, user_id: &str) -> Result<Option<(DbUser, Vec<String>)>, sqlx::Error> {
+        let user = self.find_by_id(user_id).await?;
+
+        if let Some(user) = user {
+            let role_names = self.find_roles_by_id(user_id).await?;
 
             Ok(Some((user, role_names)))
         } else {

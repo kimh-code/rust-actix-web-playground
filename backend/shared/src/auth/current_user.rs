@@ -67,10 +67,8 @@ impl CurrentUser {
         user_id: &str,
         user_repo: &UserRepository,
     ) -> Result<Self, Error> {
-        let user_uuid = Uuid::parse_str(user_id)
-            .map_err(|_| Error::InvalidInput("Invalid user ID format".to_string()))?;
 
-        let (db_user, role_names) = user_repo.find_user_with_roles(&user_uuid).await
+        let (db_user, role_names) = user_repo.find_user_with_roles(&user_id).await
             .map_err(|e| Error::Database(e))?    
             .ok_or(Error::NotFound("User not found".to_string()))?;
 

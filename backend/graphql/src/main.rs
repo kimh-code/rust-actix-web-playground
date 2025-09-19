@@ -7,6 +7,7 @@ use shared::{
     database::{
         apply_migration::MigrationManager,
         repositories::user_repository::UserRepository,
+        services::user_service::UserService,
     },
     models::{
         user::{
@@ -65,29 +66,31 @@ impl QueryRoot {
     }
 
     async fn user(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLUser>> {
-        let user_repo = ctx.data::<UserRepository>()?;
+        let user_service = ctx.data::<UserService>()?;
+        let id_str = id.0;
 
-        if let Some(db_user) = user_repo.find_by_id(&id).await? {
-            Ok(Some(db_user.into()))
+        if let Some(user_profile) = user_service.find_by_id(&id_str).await? {
+            Ok(Some(user_profile.into()))
         } else {
             Ok(None)
         }
     }
 
     async fn users(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLUser>> {
-        let user_repo = ctx.data::<UserRepository>()?;
+        let user_service = ctx.data::<UserService>()?;
+        let ids_strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
 
-        let db_users = user_repo.find_by_ids(&ids).await?;
-        let users: Vec<GraphQLUser> = db_users.into_iter().map(|db_user|db_user.into()).collect();
+        let user_profiles = user_service.find_by_ids(&ids_strs).await?;
+        let users: Vec<GraphQLUser> = user_profiles.into_iter().map(|user_profile|user_profile.into()).collect();
 
         Ok(users)
     }
 
     async fn find_all(&self, ctx: &Context<'_>) -> Result<Vec<GraphQLUser>> {
-        let user_repo = ctx.data::<UserRepository>()?;
+        let user_service = ctx.data::<UserService>()?;
 
-        let db_users = user_repo.find_all().await?;
-        let users: Vec<GraphQLUser> = db_users.into_iter().map(|db_user|db_user.into()).collect();
+        let user_profiles = user_service.find_all().await?;
+        let users: Vec<GraphQLUser> = user_profiles.into_iter().map(|db_user|db_user.into()).collect();
 
         Ok(users)
     }
@@ -117,10 +120,11 @@ async fn main() -> Result<(), AppError> {
     println!("마이그레이션 완료!");
 
     let user_repo = UserRepository::new(pool.clone());
+    let user_service = UserService::new(user_repo);
 
     let schema: MySchema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
         .data(pool.clone())
-        .data(user_repo.clone())
+        .data(user_service.clone())
         .finish();
 
     let test_token = JwtService::generate_token("25770f6b-869e-4870-87c8-ecd5c24395e0");
@@ -128,7 +132,7 @@ async fn main() -> Result<(), AppError> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(user_repo.clone()))
+            .app_data(web::Data::new(user_service.clone()))
             .app_data(web::Data::new(schema.clone()))
             .wrap(from_fn(auth_middleware))
             .route("/", web::get().to(|| async {
