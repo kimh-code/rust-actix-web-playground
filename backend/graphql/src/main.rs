@@ -9,11 +9,13 @@ use shared::{
         repositories::user_repository::UserRepository,
     },
     models::{
-        user::GraphQLUser,
+        user::{
+            GraphQLUser, TimeOffsetDateTime,
+        },
         mutation::Mutation,
     },
     error::Error as AppError,
-    auth::{middleware::auth_middleware, CurrentUser},
+    auth::{middleware::auth_middleware, CurrentUser, jwt_service::JwtService},
 };
 use sqlx::{Row,
             types::chrono,
@@ -47,6 +49,19 @@ struct QueryRoot;
 impl QueryRoot {
     async fn hello(&self) -> &str {
         "Hello, GraphQL!"
+    }
+
+    async fn me(&self, ctx: &Context<'_>) -> Result<GraphQLUser> {
+        let current_user = ctx.data::<CurrentUser>()
+            .map_err(|_| "Not authenticated")?;
+
+        Ok(GraphQLUser {
+            id: current_user.id.into(),
+            username: current_user.username.clone(),
+            email: current_user.email.clone(),
+            created_at: TimeOffsetDateTime(current_user.created_at),
+            updated_at: TimeOffsetDateTime(current_user.updated_at),
+        })
     }
 
     async fn user(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLUser>> {
@@ -107,6 +122,9 @@ async fn main() -> Result<(), AppError> {
         .data(pool.clone())
         .data(user_repo.clone())
         .finish();
+
+    let test_token = JwtService::generate_token("25770f6b-869e-4870-87c8-ecd5c24395e0");
+    println!("Test token: {}", test_token);
 
     HttpServer::new(move || {
         App::new()
