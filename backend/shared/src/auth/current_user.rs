@@ -4,31 +4,25 @@ use crate::{
     error::Error,
     database::{
         repositories::user_repository::UserRepository,
+        models::db_user::DbUser,
     }
 };
 use std::collections::HashSet;
 use async_graphql::ID;
+use time::OffsetDateTime;
 
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     pub id: Uuid,
+    pub username: String,
     pub email: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
     pub roles: Vec<Role>,
     pub permissions: Vec<Permission>,
 }
 
 impl CurrentUser {
-    pub fn new(id: Uuid, email: String, roles: Vec<Role>) -> Self {
-        let permissions = Self::calculate_permissions(&roles);
-
-        CurrentUser {
-            id,
-            email,
-            roles,
-            permissions,
-        }
-    }
-
     fn calculate_permissions(roles: &[Role]) -> Vec<Permission> {
         let mut permissions = HashSet::new();
 
@@ -80,9 +74,17 @@ impl CurrentUser {
             .map_err(|e| Error::Database(e))?    
             .ok_or(Error::NotFound("User not found".to_string()))?;
 
+        let current_user = CurrentUser::from((db_user, role_names));
+
+        Ok(current_user)
+    }
+}
+
+impl From<(DbUser, Vec<String>)> for CurrentUser {
+    fn from((db_user, role_names): (DbUser, Vec<String>)) -> Self {
         let roles = role_names.into_iter()
             .filter_map(|role_str| match role_str.as_str() {
-                "Admain" => Some(Role::Admin),
+                "Admin" => Some(Role::Admin),
                 "User" => Some(Role::User),
                 "Guest" => Some(Role::Guest),
                 _ => None,
@@ -91,11 +93,14 @@ impl CurrentUser {
 
         let permissions = Self::calculate_permissions(&roles);
 
-        Ok(CurrentUser {
+        CurrentUser {
             id: db_user.id,
+            username: db_user.username,
             email: db_user.email,
+            created_at: db_user.created_at,
+            updated_at: db_user.updated_at,
             roles,
             permissions,
-        })
+        }
     }
 }
