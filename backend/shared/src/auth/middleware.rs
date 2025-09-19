@@ -18,8 +18,10 @@ pub async fn auth_middleware(
     req: ServiceRequest,
     next: Next<impl MessageBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, ActixError> {
-
-    if let Some(auth_header) = req.headers().get("Authrization") {
+    
+    println!("[DEBUG] Auth middleware called for: {}", req.path());
+    if let Some(auth_header) = req.headers().get("Authorization") {
+        println!("[DEBUG] Authorization header: {:?}", auth_header);
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
                 println!("추출된 토큰: {}", token);
