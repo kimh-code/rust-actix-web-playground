@@ -43,14 +43,6 @@ impl UserService {
         Ok(user_profiles)
     }
 
-    pub async fn get_user_profile(&self, user_id: &str) -> Result<UserProfile, Error> {
-        if let Some(db_user) = self.user_repo.find_by_id(user_id).await? {
-            Ok(UserProfile::from(db_user))
-        } else {
-            Err(Error::NotFound("해당 id의 사용자 없음".to_string()))
-        }
-    }
-
     pub async fn find_all(&self) -> Result<Vec<UserProfile>, sqlx::Error> {
         let db_users = self.user_repo.find_all().await?;
         
