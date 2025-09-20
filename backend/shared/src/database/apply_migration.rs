@@ -1,12 +1,7 @@
-use std::error::Error;
 use tokio::fs;
-use sqlx::{Row,
-            types::chrono,
-            PgPool, Pool, Postgres, Transaction, Executor,
+use sqlx::{types::chrono,
+            PgPool, Postgres, Transaction,
 };
-use chrono::{DateTime, Utc};
-use async_graphql::SimpleObject;
-
 use crate::{
     error::Error as AppError,
 };

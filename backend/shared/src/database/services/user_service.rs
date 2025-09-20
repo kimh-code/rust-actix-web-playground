@@ -1,10 +1,8 @@
 use crate::{
-    auth::current_user::CurrentUser,
     error::Error,
     models::user::UserProfile,
     database::repositories::user_repository::UserRepository,
 };
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct UserService {
@@ -43,11 +41,6 @@ impl UserService {
             .collect();
 
         Ok(user_profiles)
-    }
-
-    pub async fn get_current_user_profile(&self, user_id: &str) -> Result<CurrentUser, Error> {
-        let current_user = CurrentUser::from_user_id(user_id, &self.user_repo).await?;
-        Ok(current_user)
     }
 
     pub async fn get_user_profile(&self, user_id: &str) -> Result<UserProfile, Error> {

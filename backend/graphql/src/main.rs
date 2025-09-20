@@ -1,5 +1,5 @@
 use async_graphql::*;
-use async_graphql_actix_web::{GraphQL, GraphQLSubscription, GraphQLRequest, GraphQLResponse};
+use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use actix_web::{web, App, HttpServer, HttpResponse, Result as ActixResult,
                 middleware::from_fn, HttpRequest, HttpMessage,
 };
@@ -16,18 +16,16 @@ use shared::{
         mutation::Mutation,
     },
     error::Error as AppError,
-    auth::{middleware::auth_middleware, CurrentUser, jwt_service::JwtService},
+    auth::{middleware::auth_middleware, CurrentUser, jwt_service::JwtService, auth_service::AuthService,
+    },
 };
-use sqlx::{Row,
-            types::chrono,
-            PgPool, Pool, Postgres, Transaction, Executor,
-};
+use sqlx::PgPool;
 use std::env;
 use dotenv::dotenv;
 
-pub type MySchema = Schema<QueryRoot, Mutation, EmptySubscription>;
+type MySchema = Schema<QueryRoot, Mutation, EmptySubscription>;
 
-pub async fn graphql_handler(
+async fn graphql_handler(
     schema: web::Data<MySchema>,
     req: HttpRequest,
     payload: GraphQLRequest,
@@ -90,7 +88,7 @@ impl QueryRoot {
         let user_service = ctx.data::<UserService>()?;
 
         let user_profiles = user_service.find_all().await?;
-        let users: Vec<GraphQLUser> = user_profiles.into_iter().map(|db_user|db_user.into()).collect();
+        let users: Vec<GraphQLUser> = user_profiles.into_iter().map(|user_profile|user_profile.into()).collect();
 
         Ok(users)
     }
@@ -120,7 +118,8 @@ async fn main() -> Result<(), AppError> {
     println!("마이그레이션 완료!");
 
     let user_repo = UserRepository::new(pool.clone());
-    let user_service = UserService::new(user_repo);
+    let user_service = UserService::new(user_repo.clone());
+    let auth_service = AuthService::new(user_repo.clone());
 
     let schema: MySchema = Schema::build(QueryRoot, Mutation::default(), EmptySubscription)
         .data(pool.clone())
@@ -133,6 +132,7 @@ async fn main() -> Result<(), AppError> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(user_service.clone()))
+            .app_data(web::Data::new(auth_service.clone()))
             .app_data(web::Data::new(schema.clone()))
             .wrap(from_fn(auth_middleware))
             .route("/", web::get().to(|| async {

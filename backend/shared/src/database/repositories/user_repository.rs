@@ -1,10 +1,8 @@
 use crate::{
-    models::user::GraphQLUser,
     database::models::db_user::DbUser,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
-use async_graphql::ID;
 
 #[derive(Clone)]
 pub struct UserRepository{

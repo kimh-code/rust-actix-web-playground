@@ -5,6 +5,7 @@ members = [
     "backend/rest",
     "backend/hybrid",
 ]
+resolver = "3"
 
 [workspace.dependencies]
 shared = { path = "./backend/shared" }

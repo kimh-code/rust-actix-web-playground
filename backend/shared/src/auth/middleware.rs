@@ -1,12 +1,8 @@
 use crate::{
-    auth::{JwtService, CurrentUser},
-    error::Error,
-    database::{
-        repositories::user_repository::UserRepository,
-    },
+    auth::{JwtService, AuthService},
 };
 use actix_web::{
-    middleware::{from_fn, Next},
+    middleware::Next,
     dev::{ServiceRequest, ServiceResponse},
     Error as ActixError,
     HttpMessage,
@@ -18,7 +14,7 @@ pub async fn auth_middleware(
     req: ServiceRequest,
     next: Next<impl MessageBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, ActixError> {
-    
+
     println!("[DEBUG] Auth middleware called for: {}", req.path());
     if let Some(auth_header) = req.headers().get("Authorization") {
         println!("[DEBUG] Authorization header: {:?}", auth_header);
@@ -30,8 +26,8 @@ pub async fn auth_middleware(
                     Ok(user_id) => {
                         println!("추출된 user_id: {}", user_id);
 
-                        if let Some(user_repo) = req.app_data::<web::Data<UserRepository>>() {
-                            match CurrentUser::from_user_id(&user_id, &user_repo).await {
+                        if let Some(auth_service) = req.app_data::<web::Data<AuthService>>() {
+                            match auth_service.create_current_user_by_id(&user_id).await {
                                 Ok(current_user) => {
                                     req.extensions_mut().insert(current_user);
                                 }

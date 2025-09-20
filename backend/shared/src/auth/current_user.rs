@@ -3,12 +3,10 @@ use crate::{
     auth::{Role, Permission},
     error::Error,
     database::{
-        repositories::user_repository::UserRepository,
         models::db_user::DbUser,
     }
 };
 use std::collections::HashSet;
-use async_graphql::ID;
 use time::OffsetDateTime;
 
 #[derive(Debug, Clone)]
@@ -61,20 +59,6 @@ impl CurrentUser {
 
     pub fn is_admin(&self) -> bool {
         self.has_role(&Role::Admin)
-    }
-
-    pub async fn from_user_id(
-        user_id: &str,
-        user_repo: &UserRepository,
-    ) -> Result<Self, Error> {
-
-        let (db_user, role_names) = user_repo.find_user_with_roles(&user_id).await
-            .map_err(|e| Error::Database(e))?    
-            .ok_or(Error::NotFound("User not found".to_string()))?;
-
-        let current_user = CurrentUser::from((db_user, role_names));
-
-        Ok(current_user)
     }
 }
 

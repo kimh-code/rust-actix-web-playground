@@ -1,7 +1,6 @@
 use uuid::Uuid;
 use time::{OffsetDateTime, 
 };
-use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
 use crate::{
     database::models::db_user::DbUser,

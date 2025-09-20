@@ -1,7 +1,6 @@
 use async_graphql::*;
 use crate::{
     models::user::GraphQLUser,
-    database::repositories::user_repository::UserRepository,
     database::services::user_service::UserService,
 };
 
